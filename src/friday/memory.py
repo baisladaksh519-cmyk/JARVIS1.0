@@ -1,4 +1,4 @@
-# Improved MemoryStore with thread-safety, robust embedding serialization, and LRU updates
+# Improved MemoryStore with lazy embedding model loading, thread-safety, robust serialization, and LRU updates
 
 import sqlite3
 import time
@@ -7,15 +7,27 @@ import threading
 from typing import List, Optional
 from io import BytesIO
 
-# Optional embedding model
-try:
-    from sentence_transformers import SentenceTransformer
-    import numpy as np
-    _HAS_EMBED = True
-    _EMBED_MODEL = SentenceTransformer('all-MiniLM-L6-v2')
-except Exception:
-    _HAS_EMBED = False
-    _EMBED_MODEL = None
+# Do not import heavy ML libs at module import time. Lazy-load when needed.
+_EMBED_MODEL = None
+_embed_lock = threading.Lock()
+
+
+def _load_embed_model_if_needed():
+    global _EMBED_MODEL
+    if _EMBED_MODEL is not None:
+        return _EMBED_MODEL
+    with _embed_lock:
+        if _EMBED_MODEL is not None:
+            return _EMBED_MODEL
+        try:
+            from sentence_transformers import SentenceTransformer
+            import numpy as np
+            model = SentenceTransformer('all-MiniLM-L6-v2')
+            _EMBED_MODEL = model
+            return _EMBED_MODEL
+        except Exception:
+            _EMBED_MODEL = None
+            return None
 
 
 class MemoryStore:
@@ -45,7 +57,6 @@ class MemoryStore:
     # serialization helpers
     def _vector_to_blob(self, v) -> bytes:
         # Use numpy.save to preserve dtype & shape
-        from io import BytesIO
         import numpy as _np
         buf = BytesIO()
         _np.save(buf, v, allow_pickle=False)
@@ -53,7 +64,6 @@ class MemoryStore:
         return buf.read()
 
     def _blob_to_vector(self, b: bytes):
-        from io import BytesIO
         import numpy as _np
         buf = BytesIO(b)
         buf.seek(0)
@@ -61,12 +71,14 @@ class MemoryStore:
 
     def add(self, text: str, metadata: Optional[dict] = None):
         embedding_blob = None
-        if _HAS_EMBED and _EMBED_MODEL is not None:
+        model = _load_embed_model_if_needed()
+        if model is not None:
             try:
-                vec = _EMBED_MODEL.encode([text])[0]
+                # SentenceTransformer returns numpy array
+                vec = model.encode([text])[0]
+                # ensure float32
                 embedding_blob = self._vector_to_blob(vec.astype('float32'))
             except Exception:
-                # If embeddings fail, continue without embedding
                 embedding_blob = None
         created = time.time()
         meta_json = json.dumps(metadata or {})
@@ -82,9 +94,10 @@ class MemoryStore:
         """
         c = self.conn.cursor()
         results = []
-        if _HAS_EMBED and _EMBED_MODEL is not None:
+        model = _load_embed_model_if_needed()
+        if model is not None:
             try:
-                qvec = _EMBED_MODEL.encode([query])[0].astype('float32')
+                qvec = model.encode([query])[0].astype('float32')
             except Exception:
                 qvec = None
 

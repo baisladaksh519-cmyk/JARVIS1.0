@@ -21,18 +21,18 @@ class LocalModel:
         self._detect_backend()
 
     def _detect_backend(self):
-        # Prefer gpt4all if available (easier Windows install in many cases)
-        try:
-            import gpt4all
-            self.backend = 'gpt4all'
-            self.gpt4all = gpt4all
-            return
-        except Exception:
-            pass
+        # Prefer llama_cpp if available, else gpt4all
         try:
             from llama_cpp import Llama
             self.backend = 'llama_cpp'
             self.Llama = Llama
+            return
+        except Exception:
+            pass
+        try:
+            import gpt4all
+            self.backend = 'gpt4all'
+            self.gpt4all = gpt4all
             return
         except Exception:
             pass
@@ -54,19 +54,32 @@ class LocalModel:
             except Exception as e:
                 raise RuntimeError(f'Failed to load llama-cpp-python backend: {e}. See docs/FRIDAY.md for install tips.')
         else:
-            raise RuntimeError('No local backend found. Install gpt4all or llama-cpp-python. See docs/FRIDAY.md for instructions.')
+            raise RuntimeError('No local backend found. Install llama-cpp-python or gpt4all. See docs/FRIDAY.md for instructions.')
 
     def close(self):
         # placeholder for cleanup
-        self.model = None
+        try:
+            # if backend provides close, call it
+            if hasattr(self.model, 'close'):
+                try:
+                    self.model.close()
+                except Exception:
+                    pass
+        finally:
+            self.model = None
 
     def generate(self, prompt: str, max_tokens: int = 256) -> Generator[str, None, None]:
         """Generate tokens from the local model as a synchronous generator.
 
         This yields partial text tokens that can be printed incrementally.
         """
-        if self.model is None:
-            self.open()
+        # Ensure opening errors are captured and yielded as friendly messages
+        try:
+            if self.model is None:
+                self.open()
+        except Exception as e:
+            yield f"\n\n[FRIDAY] Local model generation error: {e}\n"
+            return
 
         try:
             if self.backend == 'gpt4all':
@@ -114,7 +127,7 @@ class LocalModel:
                     else:
                         yield str(res)
             else:
-                raise RuntimeError('No supported backend available; install gpt4all or llama-cpp-python')
+                raise RuntimeError('No supported backend available; install llama-cpp-python or gpt4all')
         except Exception as e:
             # yield a short error so caller can display it in a streamed UI
             yield f"\n\n[FRIDAY] Local model generation error: {e}\nPlease check your backend installation and model path." 
