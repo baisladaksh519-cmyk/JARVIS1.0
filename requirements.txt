@@ -1,7 +1,5 @@
 # Minimal requirements for FRIDAY (local, very-low tier)
-# Note: sentence-transformers installs transformers and torch which can be large.
-# Install only what you need for your setup.
+# Keep this minimal to ensure CI and installs remain lightweight.
+# Optional heavy dependencies (sentence-transformers, torch, gpt4all, llama-cpp-python) are not required for basic tests.
 
-gpt4all>=0.4.0
-sentence-transformers>=2.2.2
-numpy
+pytest
