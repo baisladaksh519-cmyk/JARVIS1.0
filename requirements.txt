@@ -1,0 +1,5 @@
+# Minimal requirements for FRIDAY (local, very-low tier)
+# Keep this minimal to ensure CI and installs remain lightweight.
+# Optional heavy dependencies (sentence-transformers, torch, gpt4all, llama-cpp-python) are not required for basic tests.
+
+pytest

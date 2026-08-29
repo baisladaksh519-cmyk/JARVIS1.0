@@ -1,0 +1,7 @@
+# Ignore models and local secrets
+models/
+.env
+.venv/
+__pycache__/
+*.py[cod]
+friday_memory.db

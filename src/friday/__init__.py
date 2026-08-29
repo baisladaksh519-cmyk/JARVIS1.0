@@ -1,0 +1,1 @@
+# src.friday package initializer
